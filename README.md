@@ -115,6 +115,65 @@ The suite favors fast, deterministic tests at the layers where bugs actually hid
 Native modules (`expo-sharing`, `expo-file-system`) are mocked in `jest.setup.js`
 so tests run in plain Node without a device.
 
+## Project agents (Claude Code)
+
+This repo ships three purpose-built [Claude Code](https://claude.com/claude-code)
+subagents in `.claude/agents/`, plus a living memory file. They encode senior/
+staff-level knowledge of this codebase so day-to-day work (building features,
+QA-ing the running app, reviewing PRs) is fast and consistent.
+
+| Agent | Role | Can edit code? | Notable tools |
+|---|---|---|---|
+| **`mobile-engineer`** | Staff RN/Expo engineer. Implements features, fixes bugs, writes tests, and **opens pull requests**. | ✅ | full toolset + `gh` |
+| **`qa-engineer`** | Senior SDET. **Drives the running app** on a simulator/device to verify flows and file bug reports. | ❌ (reports only) | `mobile-mcp` + `Bash` |
+| **`pr-reviewer`** | Staff reviewer. Reviews a PR / branch / working diff against a RN-tuned rubric. | ❌ (read-only) | `Bash, Read, Grep, Glob, WebFetch` |
+
+### Persistent memory
+`.claude/memory/mobile-engineer.md` is a curated log of hard-won, repo-specific
+facts (version quirks, gotchas, conventions, key commands). The `mobile-engineer`
+agent **reads it at the start of every task and appends to it** whenever it learns
+something durable and non-obvious — so the codebase's institutional knowledge
+compounds instead of evaporating. It's plain Markdown; read or edit it yourself any
+time.
+
+### How to use them
+
+These are [subagents](https://docs.anthropic.com/en/docs/claude-code/sub-agents).
+From a Claude Code session in this repo, invoke them by intent — Claude auto-delegates
+based on each agent's description, or you can name one explicitly:
+
+```text
+# Build something and open a PR
+"Use the mobile-engineer to add infinite scroll to the order list and open a PR."
+
+# QA the running app
+"Have the qa-engineer smoke-test the share-with-friends flow on the simulator."
+
+# Review a change
+"Have the pr-reviewer review PR #12."
+"Have the pr-reviewer review the current branch against main."
+```
+
+A typical loop: **mobile-engineer** implements + opens a PR → **pr-reviewer** reviews
+it → **qa-engineer** validates it on a device → mobile-engineer addresses findings and
+records anything learned in memory.
+
+### One-time setup for the QA agent (`mobile-mcp`)
+
+The `qa-engineer` drives the app through the
+[mobile-mcp](https://github.com/mobile-next/mobile-mcp) server. It's pre-registered in
+`.mcp.json` (project scope), but you must approve and load it once:
+
+```bash
+# Already added for you; if you ever need to re-add it:
+claude mcp add -s project mobile-mcp -- npx -y @mobilenext/mobile-mcp@latest
+```
+
+Then **approve the server** when Claude Code prompts and **restart the session** so its
+tools load. Prerequisites: **iOS** → Xcode + a booted Simulator (`xcrun simctl`);
+**Android** → Android SDK + `adb` with an emulator/device. If the tools aren't present,
+the `qa-engineer` will detect that and print the exact install steps rather than failing.
+
 ## Tradeoffs & what I'd do with more time
 
 - **Timezones.** The provided `Event` type has no IANA timezone, so event times
